@@ -3,49 +3,17 @@ import random
 import shutil
 from statistics import mean
 import torch
+import time
+import argparse
 
 from graphgen.train import predict_graphs as gen_graphs_dfscode_rnn
 from baselines.graph_rnn.train import predict_graphs as gen_graphs_graph_rnn
-from baselines.dgmg.train import predict_graphs as gen_graphs_dgmg
+# from baselines.dgmg.train import predict_graphs as gen_graphs_dgmg
 from utils import get_model_attribute, load_graphs, save_graphs
 
 import metrics.stats
 
 LINE_BREAK = '----------------------------------------------------------------------\n'
-
-
-class ArgsEvaluate():
-    def __init__(self):
-        # Can manually select the device too
-        self.device = torch.device(
-            'cuda:0' if torch.cuda.is_available() else 'cpu')
-
-        self.model_path = 'model_save/' + 'model_name'
-
-        self.num_epochs = get_model_attribute(
-            'epoch', self.model_path, self.device)
-
-        # Whether to generate networkx format graphs for real datasets
-        self.generate_graphs = True
-
-        self.count = 2560
-        self.batch_size = 32  # Must be a factor of count
-
-        self.metric_eval_batch_size = 256
-
-        # Specific DFScodeRNN
-        self.max_num_edges = 50
-
-        # Specific to GraphRNN
-        self.min_num_node = 0
-        self.max_num_node = 40
-
-        self.train_args = get_model_attribute(
-            'saved_args', self.model_path, self.device)
-
-        self.graphs_save_path = 'graphs/'
-        self.current_graphs_save_path = self.graphs_save_path + self.train_args.fname + '_' + \
-            self.train_args.time + '/' + str(self.num_epochs) + '/'
 
 
 def patch_graph(graph):
@@ -55,21 +23,22 @@ def patch_graph(graph):
     return graph
 
 
-def generate_graphs(eval_args):
+def generate_graphs(eval_args, train_args):
     """
     Generate graphs (networkx format) given a trained generative model
     and save them to a directory
     :param eval_args: ArgsEvaluate object
     """
 
-    train_args = eval_args.train_args
-
     if train_args.note == 'GraphRNN':
         gen_graphs = gen_graphs_graph_rnn(eval_args)
     elif train_args.note == 'DFScodeRNN':
-        gen_graphs = gen_graphs_dfscode_rnn(eval_args)
-    elif train_args.note == 'DGMG':
-        gen_graphs = gen_graphs_dgmg(eval_args)
+        t0 = time.perf_counter()
+        gen_graphs = gen_graphs_dfscode_rnn(eval_args, train_args)
+        generation_time = time.perf_counter() - t0
+        print(f"generation time: {round(generation_time, 3)}")
+    # elif train_args.note == 'DGMG':
+        # gen_graphs = gen_graphs_dgmg(eval_args)
 
     if os.path.isdir(eval_args.current_graphs_save_path):
         shutil.rmtree(eval_args.current_graphs_save_path)
@@ -100,95 +69,112 @@ def print_stats(
     ))
     print(LINE_BREAK)
 
+class evaluate_module():
+    def __init__(self, hparams):
+        super().__init__(hparams)
+        
+    def start(args, train_args):
+        eval_args = args
+        print(train_args.current_dataset_path)
 
-if __name__ == "__main__":
-    eval_args = ArgsEvaluate()
-    train_args = eval_args.train_args
+        print('Evaluating {}, run at {}, epoch {}'.format(
+            train_args.fname, train_args.time, eval_args.num_epochs))
 
-    print('Evaluating {}, run at {}, epoch {}'.format(
-        train_args.fname, train_args.time, eval_args.num_epochs))
+        if eval_args.generate_graphs:
+            generate_graphs(eval_args, train_args)
 
-    if eval_args.generate_graphs:
-        generate_graphs(eval_args)
+        random.seed(123)
 
-    random.seed(123)
-
-    graphs = []
-    for name in os.listdir(train_args.current_dataset_path):
-        if name.endswith('.dat'):
-            graphs.append(len(graphs))
-
-    random.shuffle(graphs)
-    graphs_test_indices = graphs[int(0.90 * len(graphs)):]
-    graphs_train_indices = graphs[:int(0.90 * len(graphs))]
-
-    graphs_pred_indices = []
-    if not eval_args.generate_graphs:
-        for name in os.listdir(eval_args.current_graphs_save_path):
+        graphs = []
+        for name in os.listdir(train_args.current_dataset_path):
             if name.endswith('.dat'):
-                graphs_pred_indices.append(len(graphs_pred_indices))
-    else:
-        graphs_pred_indices = [i for i in range(eval_args.count)]
+                graphs.append(len(graphs))
 
-    print('Evaluating {}, run at {}, epoch {}'.format(
-        train_args.fname, train_args.time, eval_args.num_epochs))
+        random.shuffle(graphs)
+        graphs_test_indices = graphs[int(0.90 * len(graphs)):]
+        graphs_train_indices = graphs[:int(0.90 * len(graphs))]
 
-    print('Graphs generated - {}'.format(len(graphs_pred_indices)))
+        graphs_pred_indices = []
+        if not eval_args.generate_graphs:
+            for name in os.listdir(eval_args.current_graphs_save_path):
+                if name.endswith('.dat'):
+                    graphs_pred_indices.append(len(graphs_pred_indices))
+        else:
+            graphs_pred_indices = [i for i in range(eval_args.count)]
 
-    metrics.stats.novelity(
-        train_args.current_dataset_path, graphs_train_indices, eval_args.current_graphs_save_path,
-        graphs_pred_indices, train_args.temp_path, timeout=60)
+        print('Evaluating {}, run at {}, epoch {}'.format(
+            train_args.fname, train_args.time, eval_args.num_epochs))
 
-    metrics.stats.uniqueness(
-        eval_args.current_graphs_save_path,
-        graphs_pred_indices, train_args.temp_path, timeout=120)
+        print('Graphs generated - {}'.format(len(graphs_pred_indices)))
 
-    # exit()
+        node_count_avg_ref, node_count_avg_pred = [], []
+        edge_count_avg_ref, edge_count_avg_pred = [], []
 
-    node_count_avg_ref, node_count_avg_pred = [], []
-    edge_count_avg_ref, edge_count_avg_pred = [], []
+        degree_mmd, clustering_mmd, orbit_mmd, nspdk_mmd = [], [], [], []
+        node_label_mmd, edge_label_mmd, node_label_and_degree = [], [], []
 
-    degree_mmd, clustering_mmd, orbit_mmd, nspdk_mmd = [], [], [], []
-    node_label_mmd, edge_label_mmd, node_label_and_degree = [], [], []
-
-    print(len(graphs_test_indices))
-    for i in range(0, len(graphs_pred_indices), eval_args.metric_eval_batch_size):
-        batch_size = min(eval_args.metric_eval_batch_size,
-                         len(graphs_pred_indices) - i)
-
-        graphs_ref_indices = random.sample(graphs_test_indices, batch_size)
-        graphs_ref = load_graphs(
-            train_args.current_dataset_path, graphs_ref_indices)
-
-        graphs_ref = [patch_graph(g) for g in graphs_ref]
-
-        graphs_pred = load_graphs(
-            eval_args.current_graphs_save_path, graphs_pred_indices[i: i + batch_size])
-
-        graphs_pred = [patch_graph(g) for g in graphs_pred]
-
-        node_count_avg_ref.append(mean([len(G.nodes()) for G in graphs_ref]))
-        node_count_avg_pred.append(mean([len(G.nodes()) for G in graphs_pred]))
-
-        edge_count_avg_ref.append(mean([len(G.edges()) for G in graphs_ref]))
-        edge_count_avg_pred.append(mean([len(G.edges()) for G in graphs_pred]))
-
+        
+        graphs_pred = load_graphs(eval_args.current_graphs_save_path)
+        print(graphs_pred[0].nodes)
+        print(graphs_pred[0].nodes)
+        assert False
+        graphs_ref = load_graphs(train_args.current_dataset_path, graphs_ref_indices)
+        
         degree_mmd.append(metrics.stats.degree_stats(graphs_ref, graphs_pred))
         clustering_mmd.append(
             metrics.stats.clustering_stats(graphs_ref, graphs_pred))
         orbit_mmd.append(metrics.stats.orbit_stats_all(
             graphs_ref, graphs_pred))
 
-        nspdk_mmd.append(metrics.stats.nspdk_stats(graphs_ref, graphs_pred))
+        #     graphs_pred = [patch_graph(g) for g in graphs_pred]
+        
+        
+        # for i in range(0, len(graphs_pred_indices), eval_args.metric_eval_batch_size):
+        #     batch_size = min(eval_args.metric_eval_batch_size,
+        #                     len(graphs_pred_indices) - i)
 
-        node_label_mmd.append(
-            metrics.stats.node_label_stats(graphs_ref, graphs_pred))
-        edge_label_mmd.append(
-            metrics.stats.edge_label_stats(graphs_ref, graphs_pred))
-        node_label_and_degree.append(
-            metrics.stats.node_label_and_degree_joint_stats(graphs_ref, graphs_pred))
+        #     graphs_ref_indices = random.sample(graphs_test_indices, batch_size)
+        #     graphs_ref = load_graphs(
+        #         train_args.current_dataset_path, graphs_ref_indices)
 
-        print('Running average of metrics:\n')
+        #     graphs_ref = [patch_graph(g) for g in graphs_ref]
+
+        #     graphs_pred = load_graphs(
+        #         eval_args.current_graphs_save_path, graphs_pred_indices[i: i + batch_size])
+
+        #     graphs_pred = [patch_graph(g) for g in graphs_pred]
+
+        #     node_count_avg_ref.append(mean([len(G.nodes()) for G in graphs_ref]))
+        #     node_count_avg_pred.append(mean([len(G.nodes()) for G in graphs_pred]))
+
+        #     edge_count_avg_ref.append(mean([len(G.edges()) for G in graphs_ref]))
+        #     edge_count_avg_pred.append(mean([len(G.edges()) for G in graphs_pred]))
+
+        #     degree_mmd.append(metrics.stats.degree_stats(graphs_ref, graphs_pred))
+        #     clustering_mmd.append(
+        #         metrics.stats.clustering_stats(graphs_ref, graphs_pred))
+        #     orbit_mmd.append(metrics.stats.orbit_stats_all(
+        #         graphs_ref, graphs_pred))
+
+        #     nspdk_mmd.append(metrics.stats.nspdk_stats(graphs_ref, graphs_pred))
+
+        #     node_label_mmd.append(
+        #         metrics.stats.node_label_stats(graphs_ref, graphs_pred))
+        #     edge_label_mmd.append(
+        #         metrics.stats.edge_label_stats(graphs_ref, graphs_pred))
+        #     node_label_and_degree.append(
+        #         metrics.stats.node_label_and_degree_joint_stats(graphs_ref, graphs_pred))
+
+            # print('Running average of metrics:\n')
+
+        #     print_stats(
+        #         node_count_avg_ref, node_count_avg_pred, edge_count_avg_ref, edge_count_avg_pred,
+        #         degree_mmd, clustering_mmd, orbit_mmd, nspdk_mmd, node_label_mmd,
+        #         edge_label_mmd, node_label_and_degree
+        #     )
+
+        # print('Evaluating {}, run at {}, epoch {}'.format(
+        #     train_args.fname, train_args.time, eval_args.num_epochs))
 
         print_stats(
             node_count_avg_ref, node_count_avg_pred, edge_count_avg_ref, edge_count_avg_pred,
@@ -196,11 +182,41 @@ if __name__ == "__main__":
             edge_label_mmd, node_label_and_degree
         )
 
-    print('Evaluating {}, run at {}, epoch {}'.format(
-        train_args.fname, train_args.time, eval_args.num_epochs))
 
-    print_stats(
-        node_count_avg_ref, node_count_avg_pred, edge_count_avg_ref, edge_count_avg_pred,
-        degree_mmd, clustering_mmd, orbit_mmd, nspdk_mmd, node_label_mmd,
-        edge_label_mmd, node_label_and_degree
-    )
+    def add_args(parser):
+        
+        parser.add_argument("--device", type=str, default='cuda')
+        parser.add_argument("--model_path", type=str, default='model_save/_DFScodeRNN_ego_small_2023-09-18_17:02:41/DFScodeRNN_ego_small_50.dat')
+        
+        model_path = parser.parse_args().model_path
+        device = parser.parse_args().device
+        
+        num_epochs = get_model_attribute('epoch', model_path, device)
+        parser.add_argument("--num_epochs", type=int, default=num_epochs)
+        
+        
+        parser.add_argument("--generate_graphs", action='store_false')
+        parser.add_argument("--count", type=int, default=40)
+        parser.add_argument("--batch_size", type=int, default=40)
+        parser.add_argument("--metric_eval_batch_size", type=int, default=40)
+        parser.add_argument("--max_num_edges", type=int, default=684)
+        
+        train_args = get_model_attribute('saved_args', model_path, device)
+        
+        parser.add_argument("--graphs_save_path", type=str, default='graphs/')
+        
+        current_graphs_save_path = parser.parse_args().graphs_save_path + train_args.fname + '_' + train_args.time + '/' + str(num_epochs) + '/'
+        parser.add_argument("--current_graphs_save_path", type=str, default=current_graphs_save_path)
+        
+        return parser, train_args
+        
+        
+    
+if __name__ == "__main__":
+    # eval_args = ArgsEvaluate()
+    # train_args = eval_args.train_args
+    parser = argparse.ArgumentParser()
+    _, train_args = evaluate_module.add_args(parser)
+    args = parser.parse_args()
+    evaluate_module.start(args, train_args)
+    

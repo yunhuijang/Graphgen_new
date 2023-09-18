@@ -68,6 +68,7 @@ def create_dirs(args):
 
 
 def save_model(epoch, args, model, optimizer=None, scheduler=None, **extra_args):
+    
     if not os.path.isdir(args.current_model_save_path):
         os.makedirs(args.current_model_save_path)
 

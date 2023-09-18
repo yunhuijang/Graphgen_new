@@ -2,12 +2,12 @@ import torch
 from torch import optim
 from torch.optim.lr_scheduler import MultiStepLR
 from torch.nn.utils import clip_grad_value_
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
 from utils import save_model, load_model, get_model_attribute
 from graphgen.train import evaluate_loss as eval_loss_dfscode_rnn
 from baselines.graph_rnn.train import evaluate_loss as eval_loss_graph_rnn
-from baselines.dgmg.train import evaluate_loss as eval_loss_dgmg
+# from baselines.dgmg.train import evaluate_loss as eval_loss_dgmg
 
 
 def evaluate_loss(args, model, data, feature_map):
@@ -15,8 +15,8 @@ def evaluate_loss(args, model, data, feature_map):
         loss = eval_loss_graph_rnn(args, model, data, feature_map)
     elif args.note == 'DFScodeRNN':
         loss = eval_loss_dfscode_rnn(args, model, data, feature_map)
-    elif args.note == 'DGMG':
-        loss = eval_loss_dgmg(model, data)
+    # elif args.note == 'DGMG':
+    #     loss = eval_loss_dgmg(model, data)
 
     return loss
 
@@ -51,9 +51,9 @@ def train_epoch(
         for _, sched in scheduler.items():
             sched.step()
 
-        if args.log_tensorboard:
-            summary_writer.add_scalar('{} {} Loss/train batch'.format(
-                args.note, args.graph_type), loss, batch_id + batch_count * epoch)
+        # if args.log_tensorboard:
+        #     summary_writer.add_scalar('{} {} Loss/train batch'.format(
+        #         args.note, args.graph_type), loss, batch_id + batch_count * epoch)
 
     return total_loss / batch_count
 

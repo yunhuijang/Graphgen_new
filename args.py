@@ -12,21 +12,21 @@ class Args:
         # Can manually select the device too
         self.device = torch.device(
             'cuda:0' if torch.cuda.is_available() else 'cpu')
-
+        # self.device = torch.device("cuda:0")
         # Clean tensorboard
         self.clean_tensorboard = False
         # Clean temp folder
         self.clean_temp = False
 
         # Whether to use tensorboard for logging
-        self.log_tensorboard = True
+        self.log_tensorboard = False
 
         # Algorithm Version - # Algorithm Version - GraphRNN  | DFScodeRNN (GraphGen) | DGMG (Deep GMG)
         self.note = 'DFScodeRNN'
 
         # Check datasets/process_dataset for datasets
         # Select dataset to train the model
-        self.graph_type = 'Lung'
+        self.graph_type = 'planar'
         self.num_graphs = None  # Set it None to take complete dataset
 
         # Whether to produce networkx format graphs for real datasets
@@ -76,7 +76,7 @@ class Args:
 
         # training config
         self.num_workers = 8  # num workers to load data, default 4
-        self.epochs = 10000
+        self.epochs = 10
 
         self.lr = 0.003  # Learning rate
         # Learning rate decay factor at each milestone (no. of epochs)

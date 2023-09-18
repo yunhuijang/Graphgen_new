@@ -132,9 +132,10 @@ def graphs_to_min_dfscodes(graphs_path, min_dfscodes_path, temp_path):
             graphs.append(filename)
 
     with Pool(processes=MAX_WORKERS) as pool:
-        for i, _ in tqdm(enumerate(pool.imap_unordered(
+        for i, _ in enumerate(tqdm(pool.imap_unordered(
             partial(graph_to_min_dfscode, graphs_path=graphs_path, min_dfscodes_path=min_dfscodes_path,
-                    temp_path=temp_path), graphs, chunksize=16), 1)):
+                    temp_path=temp_path), graphs, chunksize=16)), 1):
+            print(f'DFS: {i}')
             pass
             # if i % 50000 == 0:
             #     print('Processed', i, 'graphs')
@@ -201,10 +202,10 @@ def min_dfscodes_to_tensors(min_dfscodes_path, min_dfscode_tensors_path, feature
             min_dfscodes.append(filename)
 
     with Pool(processes=MAX_WORKERS) as pool:
-        for i, _ in tqdm(enumerate(pool.imap_unordered(
+        for i, _ in enumerate(tqdm(pool.imap_unordered(
                 partial(dfscode_from_file_to_tensor_to_file, min_dfscodes_path=min_dfscodes_path,
                         min_dfscode_tensors_path=min_dfscode_tensors_path, feature_map=feature_map),
-                min_dfscodes, chunksize=16), 1)):
+                min_dfscodes, chunksize=16)), 1):
             pass
 
             # if i % 10000 == 0:

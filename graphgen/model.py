@@ -80,7 +80,7 @@ class RNN(nn.Module):
     def __init__(
         self, input_size, embedding_size, hidden_size, num_layers, rnn_type='GRU',
         dropout=0, output_size=None, output_embedding_size=None,
-        device=torch.device('cpu')
+        device=torch.device('cuda:0')
     ):
         super(RNN, self).__init__()
         self.hidden_size = hidden_size

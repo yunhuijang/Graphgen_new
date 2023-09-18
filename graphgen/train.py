@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 from torch.distributions import Categorical
 import networkx as nx
+from tqdm import tqdm
 
 from graphgen.model import create_model
 from utils import load_model, get_model_attribute
@@ -53,7 +54,7 @@ def evaluate_loss(args, model, data, feature_map):
 
     # Forward propogation
     dfscode_rnn_output = model['dfs_code_rnn'](
-        dfscode_rnn_input, input_len=x_len + 1)
+        dfscode_rnn_input, input_len=x_len.to('cpu') + 1)
 
     # Evaluating dfscode tuple
     timestamp1 = model['output_timestamp1'](dfscode_rnn_output)
@@ -67,7 +68,7 @@ def evaluate_loss(args, model, data, feature_map):
             (timestamp1, timestamp2, vertex1, edge, vertex2), dim=2)
 
         # Cleaning the padding i.e setting it to zero
-        x_pred = pack_padded_sequence(x_pred, x_len + 1, batch_first=True)
+        x_pred = pack_padded_sequence(x_pred, x_len.to('cpu') + 1, batch_first=True)
         x_pred, _ = pad_packed_sequence(x_pred, batch_first=True)
 
         if args.weights:
@@ -109,8 +110,7 @@ def evaluate_loss(args, model, data, feature_map):
     return loss
 
 
-def predict_graphs(eval_args):
-    train_args = eval_args.train_args
+def predict_graphs(eval_args, train_args):
     feature_map = get_model_attribute(
         'feature_map', eval_args.model_path, eval_args.device)
     train_args.device = eval_args.device
@@ -128,7 +128,7 @@ def predict_graphs(eval_args):
 
     graphs = []
 
-    for _ in range(eval_args.count // eval_args.batch_size):
+    for _ in tqdm(range(eval_args.count // eval_args.batch_size)):
         # initialize dfs_code_rnn hidden according to batch size
         model['dfs_code_rnn'].hidden = model['dfs_code_rnn'].init_hidden(
             batch_size=eval_args.batch_size)
